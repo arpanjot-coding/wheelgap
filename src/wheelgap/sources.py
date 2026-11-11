@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.utils import canonicalize_name
+from packaging.utils import canonicalize_name, canonicalize_version
 from packaging.version import Version
 
 if TYPE_CHECKING:
@@ -560,10 +560,11 @@ def parse_requirements(path: Path) -> Source:
             pkg.error = "constraint has an environment marker; target-dependent constraints aren't supported"
         elif any(entry.skip for entry in entries):
             pkg.error = "constraint isn't an index version or range"
-        elif len(pins := {entry.version for entry in entries if entry.version}) > 1:
+        # 1.9 and 1.9.0 are one version.
+        elif len(pins := {canonicalize_version(e.version): e.version for e in entries if e.version}) > 1:
             pkg.error = "constraints specify conflicting exact versions"
         elif pins:
-            pkg.version, pkg.spec = next(iter(pins)), None
+            pkg.version, pkg.spec = next(iter(pins.values())), None
         else:
             spec = SpecifierSet(pkg.spec or "")
             for entry in entries:
@@ -587,7 +588,10 @@ def _read_requirements(
         if not line or line.startswith("#"):
             continue
         if m := _CONSTRAINT_RE.match(line):
-            _read_requirements(path.parent / m.group(1).strip(), seen, constraints, True)
+            target = m.group(1).strip()
+            # A URL (-c https://releases.openstack.org/...) or ${VAR} is left to pip: it's skipped, as before.
+            if "://" not in target and not target.startswith("$"):
+                _read_requirements(path.parent / target, seen, constraints, True)
             continue
         if m := _INCLUDE_RE.match(line):  # -r file, -rfile, --requirement file, --requirement=file
             pkgs.extend(_read_requirements(path.parent / m.group(1).strip(), seen, constraints, constraint))

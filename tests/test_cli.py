@@ -945,9 +945,11 @@ def test_requirements_marker_constraint_is_unknown(tmp_path, fake_pypi, capsys):
     path = tmp_path / "requirements.txt"
     path.write_text("ranged\n-c constraints.txt\n", encoding="utf-8")
     (tmp_path / "constraints.txt").write_text('ranged<2; sys_platform == "win32"\n', encoding="utf-8")
-    code, out, _ = run(capsys, str(path), "-p", "3.13", "-t", "linux-x86_64")
+    code, out, _ = run(capsys, str(path), "-p", "3.13", "-t", "linux-x86_64", "--json")
     assert code == 1
-    assert "unknown" in out
+    (row,) = json.loads(out)["packages"]
+    assert row["version"] is None  # not looked up: the latest release isn't what pip would install
+    assert "marker" in row["error"]
 
 
 # requires-python ==3.12.*, so uv kept only fastlib's cp312 wheel; PyPI (fake_pypi) has a cp313 one.
