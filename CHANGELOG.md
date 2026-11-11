@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Requirements files now honor constraint files for unpinned requirements; marker-dependent constraints report unknown instead of guessing. (#169, thanks [@arpanjot-coding](https://github.com/arpanjot-coding))
 - `check_lockfile()` in the Python API now raises `ValueError` for an empty target list, like `check_packages()` and `check_package()`, instead of returning `[]` (which read as "no gaps"). `check_packages()` also rejects `workers` below 1 up front, before any index lookup, rather than failing later inside the thread pool. (#167, thanks [@amalsaidov](https://github.com/amalsaidov))
 - `--junit PATH` writes a JUnit XML report (one testsuite per target, one testcase per package) alongside the usual output, so CI dashboards can show each gap as a failed test. `n/a` cells are skipped, and `--fail-on missing` treats source builds as passes. (#165, thanks [@sarankumar1325](https://github.com/sarankumar1325))
 - Select the dependencies installed from `uv.lock` with `--extra`, `--all-extras`, `--group`, `--no-dev` and `--only-group`, or `extras` / `groups` in `[tool.wheelgap]`. Selections follow transitive extras and uv default groups, avoid checking unrelated workspace members, and preserve dependency paths in `--explain`. With no selectors, all extras and groups still count. (#160, thanks [@kushaldave002](https://github.com/kushaldave002))
