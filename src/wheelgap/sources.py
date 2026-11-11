@@ -546,9 +546,9 @@ _INCLUDE_RE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)?(\S.*)$")
 _CONSTRAINT_RE = re.compile(r"^(?:-c(?:\s+|=)?|--constraint(?:\s+|=))(\S.*)$")
 
 
-def parse_requirements(path: Path, _seen: set[Path] | None = None) -> Source:
+def parse_requirements(path: Path) -> Source:
     constraints: list[Package] = []
-    seen = {False: _seen if _seen is not None else set(), True: set()}
+    seen: dict[bool, set[Path]] = {False: set(), True: set()}  # requirement files, constraint files
     pkgs = _read_requirements(path, seen, constraints)
     by_name: dict[str, list[Package]] = {}
     for entry in constraints:
