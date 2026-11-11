@@ -560,8 +560,8 @@ def parse_requirements(path: Path) -> Source:
             pkg.error = "constraint has an environment marker; target-dependent constraints aren't supported"
         elif any(entry.skip for entry in entries):
             pkg.error = "constraint isn't an index version or range"
-        # 1.9 and 1.9.0 are one version.
-        elif len(pins := {canonicalize_version(e.version): e.version for e in entries if e.version}) > 1:
+        # 1.9 and 1.9.0 are one version; reversed() keeps the first spelling.
+        elif len(pins := {canonicalize_version(e.version): e.version for e in reversed(entries) if e.version}) > 1:
             pkg.error = "constraints specify conflicting exact versions"
         elif pins:
             pkg.version, pkg.spec = next(iter(pins.values())), None
@@ -590,7 +590,7 @@ def _read_requirements(
         if m := _CONSTRAINT_RE.match(line):
             target = m.group(1).strip()
             # A URL (-c https://releases.openstack.org/...) or ${VAR} is left to pip: it's skipped, as before.
-            if "://" not in target and not target.startswith("$"):
+            if "://" not in target and "${" not in target:
                 _read_requirements(path.parent / target, seen, constraints, True)
             continue
         if m := _INCLUDE_RE.match(line):  # -r file, -rfile, --requirement file, --requirement=file

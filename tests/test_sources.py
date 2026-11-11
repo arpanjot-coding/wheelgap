@@ -153,7 +153,9 @@ def test_requirements_marker_constraint_is_an_error(tmp_path):
 
 def test_requirements_url_and_env_var_constraints_are_skipped(tmp_path):
     path = tmp_path / "requirements.txt"
-    path.write_text("ranged\n-c https://example.com/upper.txt\n--constraint=${PIP_CONSTRAINT}\n", encoding="utf-8")
+    path.write_text(
+        "ranged\n-c https://example.com/upper.txt\n--constraint=${PIP_CONSTRAINT}\n-c c-${PY}.txt\n", encoding="utf-8"
+    )
     assert [(p.name, p.version, p.spec, p.error) for p in parse_requirements(path).packages] == [
         ("ranged", None, None, None)
     ]
