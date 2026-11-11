@@ -543,46 +543,78 @@ _NAMED_URL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\s*(\[[^\]]*\])?\s*@")
 _EGG_RE = re.compile(r"[#&]egg=([A-Za-z0-9][A-Za-z0-9._-]*)")
 _COMMENT_RE = re.compile(r"\s#")
 _INCLUDE_RE = re.compile(r"^(?:-r|--requirement)(?:\s+|=)?(\S.*)$")
+_CONSTRAINT_RE = re.compile(r"^(?:-c(?:\s+|=)?|--constraint(?:\s+|=))(\S.*)$")
 
 
 def parse_requirements(path: Path, _seen: set[Path] | None = None) -> Source:
-    seen = _seen if _seen is not None else set()
+    constraints: list[Package] = []
+    seen = {False: _seen if _seen is not None else set(), True: set()}
+    pkgs = _read_requirements(path, seen, constraints)
+    by_name: dict[str, list[Package]] = {}
+    for entry in constraints:
+        by_name.setdefault(entry.key, []).append(entry)
+    for pkg in pkgs:
+        if pkg.skip or pkg.version or not (entries := by_name.get(pkg.key)):
+            continue
+        if any(entry.markers for entry in entries):
+            pkg.error = "constraint has an environment marker; target-dependent constraints aren't supported"
+        elif any(entry.skip for entry in entries):
+            pkg.error = "constraint isn't an index version or range"
+        elif len(pins := {entry.version for entry in entries if entry.version}) > 1:
+            pkg.error = "constraints specify conflicting exact versions"
+        elif pins:
+            pkg.version, pkg.spec = next(iter(pins)), None
+        else:
+            spec = SpecifierSet(pkg.spec or "")
+            for entry in entries:
+                spec &= SpecifierSet(entry.spec or "")
+            pkg.spec = str(spec) or None
+    return Source(path.name, pkgs)
+
+
+def _read_requirements(
+    path: Path, seen: dict[bool, set[Path]], constraints: list[Package], constraint: bool = False
+) -> list[Package]:
     path = path.resolve()
-    if path in seen:
-        return Source(path.name)
-    seen.add(path)
+    if path in seen[constraint]:
+        return []
+    seen[constraint].add(path)
     pkgs: list[Package] = []
+    append = constraints.append if constraint else pkgs.append
     lines = path.read_text(encoding="utf-8").replace("\\\n", " ").splitlines()
     for raw in lines:
         line = _COMMENT_RE.split(raw, 1)[0].strip()  # " # note" or "<TAB># note"
         if not line or line.startswith("#"):
             continue
+        if m := _CONSTRAINT_RE.match(line):
+            _read_requirements(path.parent / m.group(1).strip(), seen, constraints, True)
+            continue
         if m := _INCLUDE_RE.match(line):  # -r file, -rfile, --requirement file, --requirement=file
-            pkgs.extend(parse_requirements(path.parent / m.group(1).strip(), seen).packages)
+            pkgs.extend(_read_requirements(path.parent / m.group(1).strip(), seen, constraints, constraint))
             continue
         if line.startswith("-e ") or line.startswith("--editable"):
             name = line.split("#egg=", 1)[1] if "#egg=" in line else line.split(None, 1)[-1]
-            pkgs.append(Package(name, None, skip="editable", origin=path.name))
+            append(Package(name, None, skip="editable", origin=path.name))
             continue
         if line.startswith("-"):
-            continue  # pip options: --index-url, -c, --hash continuation, ...
+            continue  # pip options: --index-url, --hash continuation, ...
         tokens = line.split()
         # Drop --hash=sha256:... and "--hash sha256:..." (option and value as two tokens).
         line = " ".join(
             t for k, t in enumerate(tokens) if not t.startswith("--hash") and (k == 0 or tokens[k - 1] != "--hash")
         )
         if line.startswith((".", "/")):
-            pkgs.append(Package(line, None, skip="path", origin=path.name))
+            append(Package(line, None, skip="path", origin=path.name))
             continue
         if "://" in line and not _NAMED_URL_RE.match(line):
             # A bare URL (git+ssh://git@github.com/org/repo.git#egg=foo): never from the index.
             # "name @ url" lines are left to Requirement, which knows the name and markers.
             egg = _EGG_RE.search(line)
             name = egg.group(1) if egg else line.split(";", 1)[0].strip()
-            pkgs.append(Package(name, None, skip="url", origin=path.name))
+            append(Package(name, None, skip="url", origin=path.name))
             continue
-        pkgs.append(requirement_to_package(line, path.name))
-    return Source(path.name, pkgs)
+        append(requirement_to_package(line, path.name))
+    return pkgs
 
 
 PARSERS = {
